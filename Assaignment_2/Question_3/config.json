@@ -1,9 +1,8 @@
 {
     "server_ip": "127.0.0.1",
-    "server_port": 8080,
+    "server_port": 8001,
+    "p": 2,
     "k": 10,
-    "p": 1,
-    "input_file": "words.csv",
-    "num_clients":20,
-    "T" : 50
+    "file_to_read": "words.csv",
+    "num_clients": 10
 }

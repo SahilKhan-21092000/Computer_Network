@@ -20,146 +20,148 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+pthread_mutex_t mutex;
 #define BUFFER_SIZE 10240
-using json = nlohmann::json; 
-using namespace std;
-
-//int to_int(string);
-struct CLIENT_INFO
+using json = nlohmann::json; // like alias in bash
+void * connect_server(void * arg)
 {
-    
-    std :: string IP;
-    int PORT;
-    int MAX_WORD;
-    int PACKET_SIZE;
-    int NUM_CLIENT;
-    int T;    //time slot;
-}client_info;
-int about_client()
-{
-                std::ifstream config_file("config.json");
-                if (!config_file.is_open()) {
-                    std::cerr << "Failed to open config.json\n";
-                    return -1;
-                }
-                json config;
-                config_file >> config;
+  std::map<std::string, int> freq; // contain frequency of corresponding word
+  int s;
+  struct sockaddr_in sock;
+  char buffer[BUFFER_SIZE];
+  char request[100];
+  int offset = 0;
+  int bytes_read;
 
-                // Read values from the JSON config
-                client_info.IP = config["server_ip"];
-                client_info.PORT = config["server_port"];
-                client_info.PACKET_SIZE = config["p"];
-                client_info.MAX_WORD = config["k"];
-                client_info.T=config["T"];
-                client_info.NUM_CLIENT=config["num_clients"];  
-                return 1;    
+  // open file as input file stream
+  std::ifstream config_file("config.json");
+  if (!config_file.is_open()) {
+    std::cout << "Failed to open config.json\n";
+    //return -1;
+  }
+
+  json config;
+  config_file >> config;
+
+  std::string IP = config["server_ip"];
+  int PORT = config["server_port"];
+  int MAX_WORDS = config["k"];
+  //int PACKET_SIZE = config["p"];
+
+  s = socket(AF_INET, SOCK_STREAM, 0);
+  if (s < 0) {
+    printf("socket() error");
+   // return -1;
+  }
+
+  sock.sin_addr.s_addr = inet_addr(IP.c_str());
+  sock.sin_port = htons(PORT);
+  sock.sin_family = AF_INET;
+
+  if (connect(s, (struct sockaddr *)&sock, sizeof(struct sockaddr_in)) != 0) {
+    printf("connect() error");
+    close(s);
+    //return -1;
+  }
+  
+  while (1) {
+    pthread_mutex_lock(&mutex);                            //we use mutex to prevent race condition 
+    snprintf(request, sizeof(request), "%d", offset);
+    pthread_mutex_unlock(&mutex);
+    if (write(s, request, strlen(request)) < 0) {
+      printf("write() error");
+      close(s);
+      //return -1;
+    }
+
+    printf("Response from offset %d:\n", offset);
+    int words_received = 0;
+    bool eof_received = false;
+    std::string response_str = "";
+
+
+    while (words_received < MAX_WORDS &&
+           (bytes_read = read(s, buffer, sizeof(buffer) - 1)) > 0) {
+      buffer[bytes_read] = '\0';
+      response_str += buffer;
+    auto end_receive = std::chrono::high_resolution_clock::now();
+         
+      int count = 0;
+      for (int i = 0; buffer[i] != '\0'; i++) {
+        if (buffer[i] == ',') {
+          count++;
+        }
+      }
+      words_received += count + 1;
+
+      if (strstr(buffer, "EOF") != NULL) {
+       printf("\nEOF received.\n");
+        eof_received = true;
+        break;
+      }
+
+      if (words_received >= MAX_WORDS) {
+        break;
+      }
+    }
+   printf("%s\n", response_str.c_str()); // to C style
+    if (bytes_read < 0) {
+      printf("read() error");
+      close(s);
+      //return -1;
+    }
+
+    if (eof_received) {
+      break;
+    }
+
+    offset += MAX_WORDS;
+
+    //printf("\nSending new request for offset %d\n", offset);
+  }
+  
+  close(s);
+  return NULL;
+  //return 0;
 };
-int connect_to_server()
-{
-    int sock;
-    struct sockaddr_in server_addr;
+int main() {
 
-    // Create socket
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1) {
-        perror("Could not create socket");
-        exit(EXIT_FAILURE);
-    }
+                            std::ifstream config_file("config.json");
+                            if (!config_file.is_open()) 
+                            {
+                                std::cout << "Failed to open config.json\n";
+                            //return -1;
+                            }
 
-    // Prepare the server address structure
-    server_addr.sin_addr.s_addr = inet_addr(client_info.IP.c_str());
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(client_info.PORT);
+                            json config;
+                            config_file >> config;
+                            int client_count = config["num_clients"];
+                            // Output the numbers
+                            vector<pthread_t> th(client_count);    
+                            for(int j=0;j<client_count;j++)   //create thread
+                            {
+                                 if(pthread_create(&th[j],NULL,&connect_server,NULL)!=0)
+                                   {
+                                       perror("failed to create thread\n");
+                                       return 2;
+                                   }
+                            };
+                            for(int j=0;j<client_count;j++)   //join thread
+                            {
+                                 if(pthread_join(th[j],NULL)!=0)
+                                    {
+                                 perror("failed to join thread\n");
+                                 std::cout<<client_count[i]<<" :"<<j;
+                                 return 3;
+                                    }
+                               else {
+                                  std::cout<<" "<<j<<" Complete :\n\n";
+                                 } ; 
+                            };
 
-    // Connect to server
-    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Connection failed");
-        close(sock);
-        exit(EXIT_FAILURE);
-    }
-    return sock ;
+
+
+
+return 1;
+
 }
-void slotted_aloha()
-{
-        about_client();
-        int sock = connect_to_server();
-
-
-
-        close (sock);
-};
-void binary_exponential_backoff()
-{
-        about_client();
-        int sock = connect_to_server();
-
-
-
-        close(sock);
-
-};
-void sensing_and_beb()
-{
-        about_client();
-        int sock = connect_to_server();
-
-        close (sock);
-};
-
-int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: ./client <protocol> <n>" << std::endl;
-        std::cerr << "Protocols: aloha, beb, sense_beb" << std::endl;
-        return 1;
-    }
-    std::string protocol = argv[1];
-   // int n = std::stoi(argv[2]);
-
-    // Load configuration
-   // ClientConfig config;
-   // if (!load_config("config.json", config)) {
-      //  return 1;
-    //}
-
-    // Connect to the server (assuming server is on localhost)
-    //int sock = connect_to_server("127.0.0.1", config.server_port);
-    //std::cout << "Connected to the server." << std::endl;
-
-    // Seed the random number generator
-    //srand(time(NULL));
-
-    // Execute the chosen protocol
-    if (protocol == "aloha") {
-        slotted_aloha();
-    }
-    else if (protocol == "beb") {
-        //binary_exponential_backoff(sock, config.beb_k, config.beb_T);
-    }
-    else if (protocol == "sense_beb") {
-        //sensing_and_beb(sock, config.sensing_beb_k, config.sensing_beb_T);
-    }
-    else {
-        std::cerr << "Unknown protocol: " << protocol << std::endl;
-        //close(sock);
-        return 1;
-    }
-
-    // Close the socket
-   // close(sock);
-    return 0;
-}
-// int to_int(string str)
-// {
-//         int num=0;
-//         for (int i = 0; str[i] != '\0'; i++) 
-//         {
-//             if (str[i] >= 48 && str[i] <= 57)
-//              {
-//                    num = num * 10 + (str[i] - 48);
-//              }
-//         else {
-//             break;
-//              }
-//          }
-//          return num;
-// };
