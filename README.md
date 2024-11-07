@@ -1,2 +1,2 @@
 # Computer_Network
-client serer
+client server
